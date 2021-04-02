@@ -71,7 +71,15 @@ def parse(String description) {
 // cmd.endPoints includes the USB ports but we don't want to expose them as child devices since they cannot be controlled so hardcode to just include the outlets
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd, ep = null) {
     if (!childDevices) {
-        addChildSwitches(5)
+        addChildSwitches(1..5)
+        addChildUsbPorts(6..7)
+    } else {
+        def childPlugs = childDevices?.find { it.deviceNetworkId.contains(":plug:") }?.size()
+        def childPorts = childDevices?.find { it.deviceNetworkId.contains(":usb:") }?.size()
+        // if < 5 or ports < 2 we need to do some cleanup.
+        if (childPlugs < 5 || childPorts < 2) {
+            log.info("JHH need to migrate children over...")
+        }
     }
     response([
         resetAll(),
@@ -205,7 +213,7 @@ def ping() {
 }
 
 def childOnOff(deviceNetworkId, value) {
-    def switchId = getSwitchId(deviceNetworkId)
+    def switchId = getEndpoint(deviceNetworkId)
     if (switchId != null) sendHubCommand onOffCmd(value, switchId)
 }
 
@@ -233,7 +241,7 @@ private onOffCmd(value, endpoint = 1) {
 private refreshAll(includeMeterGet = true) {
     def endpoints = [1]
     childDevices.each {
-        def switchId = getSwitchId(it.deviceNetworkId)
+        def switchId = getEndpoint(it.deviceNetworkId)
         if (switchId != null) {
             endpoints << switchId
         }
@@ -242,9 +250,9 @@ private refreshAll(includeMeterGet = true) {
 }
 
 def childRefresh(deviceNetworkId, includeMeterGet = true) {
-    def switchId = getSwitchId(deviceNetworkId)
-    if (switchId != null) {
-        sendHubCommand refresh([switchId], includeMeterGet)
+    def endpoint = getEndpoint(deviceNetworkId)
+    if (endpoint != null) {
+        sendHubCommand refresh([endpoint], includeMeterGet)
     }
 }
 
@@ -266,7 +274,7 @@ private resetAll() {
 }
 
 def childReset(deviceNetworkId) {
-    def switchId = getSwitchId(deviceNetworkId)
+    def switchId = getEndpoint(deviceNetworkId)
     if (switchId != null) {
         log.debug "Child reset switchId: ${switchId}"
         sendHubCommand reset(switchId)
@@ -282,9 +290,16 @@ def reset(endpoint = 1) {
     ], 500)
 }
 
-def getSwitchId(deviceNetworkId) {
+def getEndpoint(deviceNetworkId) {
     def split = deviceNetworkId?.split(":")
-    return (split.length > 1) ? split[1] as Integer : null
+    if ((split.length > 2)) {
+        return split[2] as Integer
+    } else if ((split.length > 1)) {
+        // FIXME: legacy
+        return split[1] as Integer
+    } else {
+        return null
+    }
 }
 
 private encap(cmd, endpoint = null) {
@@ -308,15 +323,17 @@ private addChildSwitches(numberOfSwitches) {
     //  2. child devices added as components
     //  2. child devices for all 5 outlets (not just 2-5)
     //  3. USB ports
-    for (def endpoint : 2..numberOfSwitches) {
+    for (def endpoint : numberOfSwitches) {
         try {
-            String childDni = "${device.deviceNetworkId}:$endpoint"
-            def componentLabel = device.displayName[0..-2] + "${endpoint}"
+            String childDni = "${device.deviceNetworkId}:plug:$endpoint"
+            def componentLabel = device.displayName + " ${endpoint}"
             def childDthName = "Child Metering Switch"
             addChildDevice(childDthName, childDni, device.getHub().getId(), [
                 completedSetup: true,
                 label         : componentLabel,
-                isComponent   : false
+                isComponent   : true,
+                componentName : "plug-$endpoint",
+                componentLabel: "Plug $endpoint",
             ])
         } catch (Exception e) {
             log.debug "Exception: ${e}"
@@ -324,6 +341,23 @@ private addChildSwitches(numberOfSwitches) {
     }
 }
 
-private static deviceIncludesMeter() {
-    return true
+private addChildUsbPorts(IntRange portRange) {
+    log.debug "${device.displayName} - Executing addChildUsbPorts()"
+    for (def endpoint : portRange) {
+        try {
+            String childDni = "${device.deviceNetworkId}:usb:$endpoint"
+            def componentLabel = device.displayName + " USB ${endpoint}"
+            def childDthName = "Child USB Port"
+            // Reuse the usb port capability for now.
+            addChildDevice("krlaframboise", childDthName, childDni, device.getHub().getId(), [
+                completedSetup: true,
+                label         : componentLabel,
+                isComponent   : true,
+                componentName : "usb-$endpoint",
+                componentLabel: "USB ${endpoint - 1 + portRange.from}",
+            ])
+        } catch (Exception e) {
+            log.debug "Exception: ${e}"
+        }
+    }
 }
