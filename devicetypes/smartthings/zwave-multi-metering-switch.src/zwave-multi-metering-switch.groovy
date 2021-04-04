@@ -17,22 +17,26 @@ metadata {
         namespace: "smartthings",
         author: "SmartThings",
         mnmn: "SmartThings",
-        vid: "generic-switch-power-energy",
+        vid: "generic-switch-power-energy", // TODO: new vid for presentation
         mcdSync: true,
         genericHandler: "Z-Wave"
     ) {
-        capability "Switch"
-        capability "Power Meter"
-        capability "Energy Meter"
+        // capability "Switch" // for all-on, all-off??
+        capability "Power Meter" // for combined power
+        capability "Energy Meter" // for combined energy
         capability "Refresh"
         capability "Configuration"
-        capability "Actuator"
-        capability "Sensor"
+        // capability "Actuator" // why?
+        // capability "Sensor" // why?
         capability "Health Check"
 
         command "reset"
 
         fingerprint mfr: "027A", prod: "A000", model: "A004", deviceJoinName: "Zooz Switch" //Zooz ZEN Power Strip
+    }
+    
+    preferences {
+        input name: "text", type: "text", title: "Text", description: "Enter Text", required: true
     }
 }
 
@@ -64,12 +68,14 @@ def parse(String description) {
             result = zwaveEvent(cmd, null)
         }
     }
-    // log.debug "parsed '${description}' to ${result.inspect()}"
+    log.debug "parsed '${description}' to ${result.inspect()}"
     result
 }
 
 // cmd.endPoints includes the USB ports but we don't want to expose them as child devices since they cannot be controlled so hardcode to just include the outlets
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointReport cmd, ep = null) {
+    log.info "Multichannel endpoint report $cmd" + (ep ? " from endpoint $ep" : "")
+    // MultiChannelEndPointReport(dynamic: false, endPoints: 7, identical: true, res11: false, res00: 0)
     if (!childDevices) {
         addChildSwitches(1..5)
         addChildUsbPorts(6..7)
@@ -78,7 +84,19 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointR
         def childPorts = childDevices?.find { it.deviceNetworkId.contains(":usb:") }?.size()
         // if < 5 or ports < 2 we need to do some cleanup.
         if (childPlugs < 5 || childPorts < 2) {
-            log.info("JHH need to migrate children over...")
+            childDevices.each {
+                try{
+                    deleteChildDevice(it.deviceNetworkId)
+                }
+                catch (e) {
+                    log.debug "Error deleting ${it.deviceNetworkId}: ${e}"
+                }
+            }
+            addChildSwitches(1..5)
+	        addChildUsbPorts(6..7)
+            log.info("JHH Migration is complete: ${childDevices.collect { it.deviceNetworkId }}")
+        } else {
+        	log.info("JHH No need to migrate; already done: ${childDevices.collect { it.deviceNetworkId }}")
         }
     }
     response([
@@ -103,6 +121,7 @@ private lateConfigure() {
         encap(zwave.configurationV1.configurationSet(parameterNumber: 2, size: 4, scaledConfigurationValue: 5)),    // makes device report every 5W change
         encap(zwave.configurationV1.configurationSet(parameterNumber: 3, size: 4, scaledConfigurationValue: 600)), // enabling power Wattage reports every 10 minutes
         encap(zwave.configurationV1.configurationSet(parameterNumber: 4, size: 4, scaledConfigurationValue: 600))    // enabling kWh energy reports every 10 minutes
+        // TODO configure time for reporting usb ports; default is a bit chatty
     ]
     sendHubCommand cmds
 }
@@ -119,7 +138,7 @@ def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityMessageEncapsulat
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd, ep = null) {
-    // log.debug "Multichannel command ${cmd}" + (ep ? " from endpoint $ep" : "")
+    log.debug "Multichannel command ${cmd}" + (ep ? " from endpoint $ep" : "")
     if (cmd.commandClass == 0x6C && cmd.parameter.size >= 4) { // Supervision encapsulated Message
         // Supervision header is 4 bytes long, two bytes dropped here are the latter two bytes of the supervision header
         cmd.parameter = cmd.parameter.drop(2)
@@ -150,23 +169,19 @@ private handleSwitchReport(endpoint, cmd) {
 }
 
 private changeSwitch(endpoint, value) {
-    if (endpoint == 1) {
-        createEvent(name: "switch", value: value, isStateChange: true, descriptionText: "Switch ${endpoint} is ${value}")
-    } else {
-        String childDni = "${device.deviceNetworkId}:${endpoint}"
-        def child = childDevices.find { it.deviceNetworkId == childDni }
-        child?.sendEvent(name: "switch", value: value, isStateChange: true, descriptionText: "Switch ${endpoint} is ${value}")
-    }
+    def child = findDeviceByEndpoint(endpoint)
+    child?.sendEvent(name: "switch", value: value, isStateChange: true, descriptionText: "Switch ${endpoint} is ${value}")
+}
+
+def findDeviceByEndpoint(endpoint) {
+    return childDevices.find { it.deviceNetworkId.endsWith(":$endpoint") }
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.meterv3.MeterReport cmd, ep = null) {
     log.debug "Meter ${cmd}" + (ep ? " from endpoint $ep" : "")
-    if (ep == 1) {
-        // TODO: ep=1 should still be a child, not this parent
-        return createEvent(createMeterEventMap(cmd))
-    } else if (ep) {
-        String childDni = "${device.deviceNetworkId}:$ep"
-        def child = childDevices.find { it.deviceNetworkId == childDni }
+    // TODO: collect the combined power from all children
+    if (ep) {
+        def child = findDeviceByEndpoint(ep)
         return child?.sendEvent(createMeterEventMap(cmd))
     } else {
         log.debug "Wattage change has been detected. Refreshing each endpoint"
@@ -198,11 +213,13 @@ def zwaveEvent(physicalgraph.zwave.Command cmd, ep) {
 }
 
 def on() {
-    onOffCmd(0xFF)
+	// TODO: no need for whole-strip on?
+    // onOffCmd(0xFF)
 }
 
 def off() {
-    onOffCmd(0x00)
+	// TODO: no need for whold-strip off?
+    // onOffCmd(0x00)
 }
 
 // The Health Check capability uses the “checkInterval” attribute to determine the maximum number of seconds the device can go without generating new events.
@@ -328,6 +345,7 @@ private addChildSwitches(numberOfSwitches) {
             String childDni = "${device.deviceNetworkId}:plug:$endpoint"
             def componentLabel = device.displayName + " ${endpoint}"
             def childDthName = "Child Metering Switch"
+            log.debug("JHH adding $childDni as plug-$endpoint")
             addChildDevice(childDthName, childDni, device.getHub().getId(), [
                 completedSetup: true,
                 label         : componentLabel,
@@ -348,6 +366,7 @@ private addChildUsbPorts(IntRange portRange) {
             String childDni = "${device.deviceNetworkId}:usb:$endpoint"
             def componentLabel = device.displayName + " USB ${endpoint}"
             def childDthName = "Child USB Port"
+            log.debug("JHH adding $childDni as usb-$endpoint")
             // Reuse the usb port capability for now.
             addChildDevice("krlaframboise", childDthName, childDni, device.getHub().getId(), [
                 completedSetup: true,
