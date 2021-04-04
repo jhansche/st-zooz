@@ -79,25 +79,6 @@ def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelEndPointR
     if (!childDevices) {
         addChildSwitches(1..5)
         addChildUsbPorts(6..7)
-    } else {
-        def childPlugs = childDevices?.find { it.deviceNetworkId.contains(":plug:") }?.size()
-        def childPorts = childDevices?.find { it.deviceNetworkId.contains(":usb:") }?.size()
-        // if < 5 or ports < 2 we need to do some cleanup.
-        if (childPlugs < 5 || childPorts < 2) {
-            childDevices.each {
-                try{
-                    deleteChildDevice(it.deviceNetworkId)
-                }
-                catch (e) {
-                    log.debug "Error deleting ${it.deviceNetworkId}: ${e}"
-                }
-            }
-            addChildSwitches(1..5)
-	        addChildUsbPorts(6..7)
-            log.info("JHH Migration is complete: ${childDevices.collect { it.deviceNetworkId }}")
-        } else {
-        	log.info("JHH No need to migrate; already done: ${childDevices.collect { it.deviceNetworkId }}")
-        }
     }
     response([
         resetAll(),
