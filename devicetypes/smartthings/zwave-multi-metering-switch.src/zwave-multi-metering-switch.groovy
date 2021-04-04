@@ -17,7 +17,7 @@ metadata {
         namespace: "smartthings",
         author: "SmartThings",
         mnmn: "SmartThings",
-        vid: "generic-switch-power-energy", // TODO: new vid for presentation
+        vid: "cb7f39ea-77cc-3969-b169-58893aa3d8e2",
         mcdSync: true,
         genericHandler: "Z-Wave"
     ) {
