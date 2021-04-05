@@ -26,8 +26,6 @@ metadata {
         capability "Energy Meter" // for combined energy
         capability "Refresh"
         capability "Configuration"
-        // capability "Actuator" // why?
-        // capability "Sensor" // why?
         capability "Health Check"
 
         command "reset"
@@ -37,11 +35,13 @@ metadata {
     
     preferences {
         input name: "text", type: "text", title: "Text", description: "Enter Text", required: true
+        // TODO configuration parameters
     }
 }
 
 def installed() {
     log.debug "Installed ${device.displayName}"
+    // Health check every 62 minutes.
     sendEvent(name: "checkInterval", value: 62 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID])
 }
 
@@ -157,7 +157,7 @@ private handleSwitchReport(endpoint, cmd) {
 
 private changeSwitch(endpoint, value) {
     def child = findDeviceByEndpoint(endpoint)
-    child?.sendEvent(name: "switch", value: value, isStateChange: true, descriptionText: "Switch ${endpoint} is ${value}")
+    child?.sendEvent(name: "switch", value: value, descriptionText: "Switch ${endpoint} is ${value}")
 }
 
 def findDeviceByEndpoint(endpoint) {
@@ -180,9 +180,11 @@ def zwaveEvent(physicalgraph.zwave.commands.meterv3.MeterReport cmd, ep = null) 
     if (cmd.scale == 0) {
         def energySum = childDevices?.collect { it.currentValue("energy") ?: 0 }?.sum()
         sendEvent(name: "energy", value: energySum, unit: "kWh")
-    } else if (cmd.scale == 1) {
+        log.debug "Aggregate energy from child devices: $energySum kWh."
+    } else if (cmd.scale == 2) {
         def powerSum = childDevices?.collect { it.currentValue("power") ?: 0 }?.sum()
         sendEvent(name: "power", value: powerSum, unit: "W")
+        log.debug "Aggregate power from child devices: $powerSum W."
     }
     
     return result
@@ -255,13 +257,7 @@ private onOffCmd(value, endpoint = 1) {
 }
 
 private refreshAll(includeMeterGet = true) {
-    def endpoints = [1]
-    childDevices.each {
-        def switchId = getEndpoint(it.deviceNetworkId)
-        if (switchId != null) {
-            endpoints << switchId
-        }
-    }
+    def endpoints = [1, 2, 3, 4, 5]
     sendHubCommand refresh(endpoints, includeMeterGet)
 }
 
@@ -272,7 +268,7 @@ def childRefresh(deviceNetworkId, includeMeterGet = true) {
     }
 }
 
-def refresh(endpoints = [1], includeMeterGet = true) {
+def refresh(endpoints = [1, 2, 3, 4, 5], includeMeterGet = true) {
 	log.info("refresh: $endpoints, $includeMeterGet")
     def cmds = []
     endpoints.each {

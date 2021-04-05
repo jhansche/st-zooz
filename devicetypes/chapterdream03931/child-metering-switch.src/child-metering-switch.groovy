@@ -23,9 +23,6 @@ metadata {
         capability "Power Meter"
         capability "Energy Meter"
         capability "Refresh"
-        capability "Actuator"
-        capability "Sensor"
-        capability "Health Check"
 
         command "reset"
     }
@@ -43,14 +40,10 @@ def refresh() {
     parent.childRefresh(device.deviceNetworkId)
 }
 
-def ping() {
-    refresh()
-}
-
 def reset() {
     parent.childReset(device.deviceNetworkId)
 }
 
 def installed() {
-    sendEvent(name: "checkInterval", value: 2 * 15 * 60 + 2 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID, offlinePingable: "1"])
+	// anything?
 }
