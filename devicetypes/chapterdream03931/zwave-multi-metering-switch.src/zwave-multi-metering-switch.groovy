@@ -42,7 +42,7 @@ metadata {
 
 def installed() {
     log.debug "Installed ${device.displayName}"
-    sendEvent(name: "checkInterval", value: 2 * 15 * 60 + 2 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID, offlinePingable: "1"])
+    sendEvent(name: "checkInterval", value: 62 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID])
 }
 
 def updated() {
@@ -58,6 +58,10 @@ def configure() {
 }
 
 def parse(String description) {
+	// When we receive a zwave response, treat that as online
+    // FIXME: we shouldn't need to do this. Because this is a composite device, events aren't being generated for the strip, but for each child. Once we start creating events for the main composite device, this will not be necessary.
+    sendEvent(name: "DeviceWatch-DeviceStatus", value: "online", data: [deviceScheme: "MIXED"])
+
     def result = null
     if (description.startsWith("Err")) {
         // FIXME this isn't right
@@ -99,10 +103,12 @@ private lateConfigure() {
     log.debug "Late configuration..."
     // configure settings
     cmds = [
-        encap(zwave.configurationV1.configurationSet(parameterNumber: 2, size: 4, scaledConfigurationValue: 5)),    // makes device report every 5W change
+        encap(zwave.configurationV1.configurationSet(parameterNumber: 1, size: 4, scaledConfigurationValue: 1)),   // after power recovery, 1 = all ports ON
+        encap(zwave.configurationV1.configurationSet(parameterNumber: 2, size: 4, scaledConfigurationValue: 5)),   // makes device report every 5W change
         encap(zwave.configurationV1.configurationSet(parameterNumber: 3, size: 4, scaledConfigurationValue: 600)), // enabling power Wattage reports every 10 minutes
-        encap(zwave.configurationV1.configurationSet(parameterNumber: 4, size: 4, scaledConfigurationValue: 600))    // enabling kWh energy reports every 10 minutes
-        // TODO configure time for reporting usb ports; default is a bit chatty
+        encap(zwave.configurationV1.configurationSet(parameterNumber: 4, size: 4, scaledConfigurationValue: 600)), // enabling kWh energy reports every 10 minutes
+        encap(zwave.configurationV1.configurationSet(parameterNumber: 35, size: 4, scaledConfigurationValue: 0)),  // Amps report frequency; 0=disabled
+        encap(zwave.configurationV1.configurationSet(parameterNumber: 36, size: 4, scaledConfigurationValue: 0))   // Voltage report frequency; 0=disabled
     ]
     sendHubCommand cmds
 }
@@ -160,15 +166,26 @@ def findDeviceByEndpoint(endpoint) {
 
 def zwaveEvent(physicalgraph.zwave.commands.meterv3.MeterReport cmd, ep = null) {
     log.debug "Meter ${cmd}" + (ep ? " from endpoint $ep" : "")
-    // TODO: collect the combined power from all children
+    def result = null
     if (ep) {
         def child = findDeviceByEndpoint(ep)
-        return child?.sendEvent(createMeterEventMap(cmd))
+        result = child?.sendEvent(createMeterEventMap(cmd))
     } else {
         log.debug "Wattage change has been detected. Refreshing each endpoint"
         // return createEvent([isStateChange: false, descriptionText: "Wattage change has been detected. Refreshing each endpoint"])
-        return null
     }
+    
+    // Sum up all the child attributes here.
+    // TODO: wait until we've collected all endpoints first; otherwise this will send 5x events as each plug is received.
+    if (cmd.scale == 0) {
+        def energySum = childDevices?.collect { it.currentValue("energy") ?: 0 }?.sum()
+        sendEvent(name: "energy", value: energySum, unit: "kWh")
+    } else if (cmd.scale == 1) {
+        def powerSum = childDevices?.collect { it.currentValue("power") ?: 0 }?.sum()
+        sendEvent(name: "power", value: powerSum, unit: "W")
+    }
+    
+    return result
 }
 
 private createMeterEventMap(cmd) {
@@ -207,6 +224,7 @@ def off() {
 // If the device hasn’t created any events within that amount of time, SmartThings executes the “ping()” command.
 // If ping() does not generate any events, SmartThings marks the device as offline.
 def ping() {
+	log.info("ping(): refreshing status")
     refresh()
 }
 
@@ -255,6 +273,7 @@ def childRefresh(deviceNetworkId, includeMeterGet = true) {
 }
 
 def refresh(endpoints = [1], includeMeterGet = true) {
+	log.info("refresh: $endpoints, $includeMeterGet")
     def cmds = []
     endpoints.each {
         cmds << [encap(zwave.basicV1.basicGet(), it)]
@@ -292,9 +311,6 @@ def getEndpoint(deviceNetworkId) {
     def split = deviceNetworkId?.split(":")
     if ((split.length > 2)) {
         return split[2] as Integer
-    } else if ((split.length > 1)) {
-        // FIXME: legacy
-        return split[1] as Integer
     } else {
         return null
     }
@@ -316,11 +332,6 @@ private encap(cmd, endpoint = null) {
 
 private addChildSwitches(numberOfSwitches) {
     log.debug "${device.displayName} - Executing addChildSwitches()"
-    // TODO:
-    //  1. main device represents the whole, nothing else (outlet 1 is a child)
-    //  2. child devices added as components
-    //  2. child devices for all 5 outlets (not just 2-5)
-    //  3. USB ports
     for (def endpoint : numberOfSwitches) {
         try {
             String childDni = "${device.deviceNetworkId}:plug:$endpoint"
