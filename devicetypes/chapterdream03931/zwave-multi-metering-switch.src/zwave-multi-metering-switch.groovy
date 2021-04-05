@@ -17,7 +17,7 @@ metadata {
         namespace: "chapterdream03931",
         author: "SmartThings/jhansche",
         mnmn: "SmartThingsCommunity",
-        vid: "cb7f39ea-77cc-3969-b169-58893aa3d8e2",
+        vid: "4f13280b-548e-3c0f-99ab-ab717a9b5851",
         mcdSync: true,
         genericHandler: "Z-Wave"
     ) {

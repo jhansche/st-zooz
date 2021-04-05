@@ -22,13 +22,6 @@
     "detailView": [
         {
             "component": "main",
-            "capability": "configuration",
-            "version": 1,
-            "values": [],
-            "patch": []
-        },
-        {
-            "component": "main",
             "capability": "refresh",
             "version": 1,
             "values": [],
@@ -36,14 +29,14 @@
         },
         {
             "component": "main",
-            "capability": "energyMeter",
+            "capability": "powerMeter",
             "version": 1,
             "values": [],
             "patch": []
         },
         {
             "component": "main",
-            "capability": "powerMeter",
+            "capability": "energyMeter",
             "version": 1,
             "values": [],
             "patch": []
@@ -61,31 +54,10 @@
             "version": 1,
             "values": [],
             "patch": []
-        },
-        {
-            "component": "main",
-            "capability": "healthCheck",
-            "version": 1,
-            "values": [],
-            "patch": []
         }
     ],
     "automation": {
         "conditions": [
-            {
-                "component": "main",
-                "capability": "configuration",
-                "version": 1,
-                "values": [],
-                "patch": []
-            },
-            {
-                "component": "main",
-                "capability": "refresh",
-                "version": 1,
-                "values": [],
-                "patch": []
-            },
             {
                 "component": "main",
                 "capability": "energyMeter",
@@ -101,8 +73,15 @@
                 "patch": []
             },
             {
-                "component": "main",
-                "capability": "healthCheck",
+                "component": "plug-5",
+                "capability": "powerMeter",
+                "version": 1,
+                "values": [],
+                "patch": []
+            },
+            {
+                "component": "usb-1",
+                "capability": "switch",
                 "version": 1,
                 "values": [],
                 "patch": []
@@ -111,35 +90,7 @@
         "actions": [
             {
                 "component": "main",
-                "capability": "configuration",
-                "version": 1,
-                "values": [],
-                "patch": []
-            },
-            {
-                "component": "main",
                 "capability": "refresh",
-                "version": 1,
-                "values": [],
-                "patch": []
-            },
-            {
-                "component": "main",
-                "capability": "energyMeter",
-                "version": 1,
-                "values": [],
-                "patch": []
-            },
-            {
-                "component": "main",
-                "capability": "powerMeter",
-                "version": 1,
-                "values": [],
-                "patch": []
-            },
-            {
-                "component": "main",
-                "capability": "healthCheck",
                 "version": 1,
                 "values": [],
                 "patch": []
@@ -147,9 +98,9 @@
         ]
     },
     "type": "dth",
-    "presentationId": "cb7f39ea-77cc-3969-b169-58893aa3d8e2",
+    "presentationId": "4f13280b-548e-3c0f-99ab-ab717a9b5851",
     "manufacturerName": "SmartThingsCommunity",
-    "vid": "cb7f39ea-77cc-3969-b169-58893aa3d8e2",
+    "vid": "4f13280b-548e-3c0f-99ab-ab717a9b5851",
     "mnmn": "SmartThingsCommunity",
     "version": "0.0.1"
 }
