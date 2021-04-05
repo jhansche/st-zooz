@@ -17,7 +17,7 @@ metadata {
         namespace: "chapterdream03931",
         author: "SmartThings",
         mnmn: "SmartThingsCommunity",
-        vid: "generic-switch-power-energy"
+        vid: "b5e9135d-dd6e-372e-8248-a8fafb92d645"
     ) {
         capability "Switch"
         capability "Power Meter"
